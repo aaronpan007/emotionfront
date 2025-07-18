@@ -27,10 +27,9 @@ import {
 } from "lucide-react"
 import ReportDisplay from './ReportDisplay'
 
-// 在文件顶部添加API基础URL配置  
-const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://ai-emotional-safety-backend.onrender.com' 
-  : 'http://localhost:3001';
+// 在文件顶部添加API基础URL配置
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 
+  (import.meta.env.DEV ? 'http://localhost:3001' : 'https://ai-emotional-safety-backend.onrender.com');
 
 // 配置marked选项以确保安全渲染
 marked.setOptions({
