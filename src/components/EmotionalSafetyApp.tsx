@@ -37,6 +37,24 @@ console.log('VITE_API_BASE_URL:', import.meta.env.VITE_API_BASE_URL);
 console.log('DEV模式:', import.meta.env.DEV);
 console.log('最终API_BASE_URL:', API_BASE_URL);
 
+// 测试API连接
+async function testAPIConnection() {
+  try {
+    console.log('🔍 测试API连接...');
+    const response = await fetch(`${API_BASE_URL}/api/health`);
+    console.log('✅ API连接成功:', response.status);
+    const data = await response.json();
+    console.log('📊 健康检查响应:', data);
+  } catch (error) {
+    console.error('❌ API连接失败:', error);
+  }
+}
+
+// 页面加载时测试API连接
+if (typeof window !== 'undefined') {
+  testAPIConnection();
+}
+
 // 配置marked选项以确保安全渲染
 marked.setOptions({
   breaks: true, // 支持换行
