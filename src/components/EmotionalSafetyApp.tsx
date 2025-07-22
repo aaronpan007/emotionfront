@@ -650,10 +650,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       formData.append('conversation_history', JSON.stringify(chatMessages))
       formData.append('audio', currentAudioBlob, 'recording.wav')
 
+      // 设置2分钟超时
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 120000)
+      
       const response = await fetch(`${API_BASE_URL}/api/post_date_debrief`, {
         method: 'POST',
-        body: formData
+        body: formData,
+        signal: controller.signal
       })
+      
+      clearTimeout(timeoutId)
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`)
@@ -762,10 +769,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         
         // 注意：这里不发送音频文件，只有在录音时才发送音频
 
+        // 设置2分钟超时
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 120000)
+        
         const response = await fetch(`${API_BASE_URL}/api/post_date_debrief`, {
           method: 'POST',
-          body: formData
+          body: formData,
+          signal: controller.signal
         })
+        
+        clearTimeout(timeoutId)
 
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`)
