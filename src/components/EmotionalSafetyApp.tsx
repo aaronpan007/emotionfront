@@ -650,17 +650,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       formData.append('conversation_history', JSON.stringify(chatMessages))
       formData.append('audio', currentAudioBlob, 'recording.wav')
 
-      // 设置2分钟超时
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 120000)
-      
-      const response = await fetch(`${API_BASE_URL}/api/post_date_debrief`, {
+      // 使用异步API端点
+      const response = await fetch(`${API_BASE_URL}/api/post-date-debrief-async`, {
         method: 'POST',
-        body: formData,
-        signal: controller.signal
+        body: formData
       })
-      
-      clearTimeout(timeoutId)
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`)
@@ -668,37 +662,93 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
       const result = await response.json()
       
-      if (result.success) {
-        // 更新用户消息显示转录内容
-        setChatMessages(prev => {
-          const updated = [...prev]
-          const userMsgIndex = updated.findIndex(msg => msg.id === audioMessage.id)
-          if (userMsgIndex !== -1 && result.metadata?.transcription?.transcription) {
-            updated[userMsgIndex] = {
-              ...updated[userMsgIndex],
-              content: result.metadata.transcription.transcription
+      if (result.success && result.taskId) {
+        // 开始轮询任务状态
+        const pollTaskStatus = async (taskId: string) => {
+          const maxAttempts = 60 // 最多轮询5分钟
+          let attempts = 0
+          
+          const poll = async (): Promise<void> => {
+            attempts++
+            
+            try {
+              const statusResponse = await fetch(`${API_BASE_URL}/api/task-status/${taskId}`)
+              if (!statusResponse.ok) {
+                throw new Error(`状态查询失败: ${statusResponse.status}`)
+              }
+              
+              const statusData = await statusResponse.json()
+              const task = statusData.task
+              
+              // 更新加载消息显示进度
+              setChatMessages(prev => {
+                const updated = [...prev]
+                const loadingMessage = updated[updated.length - 1]
+                if (loadingMessage && loadingMessage.sender === 'assistant') {
+                  updated[updated.length - 1] = {
+                    ...loadingMessage,
+                    content: `正在分析您的情况... ${task.progress}%`
+                  }
+                }
+                return updated
+              })
+              
+              if (task.status === 'completed') {
+                // 任务完成，显示结果
+                if (task.result && task.result.success) {
+                  setChatMessages(prev => {
+                    const withoutLoading = prev.slice(0, -1) // 移除加载消息
+                    const assistantResponse: ChatMessage = {
+                      id: (Date.now() + 2).toString(),
+                      content: task.result.response,
+                      sender: "assistant",
+                      timestamp: new Date().toLocaleTimeString([], {
+                        hour: "numeric",
+                        minute: "2-digit",
+                        hour12: true,
+                      }),
+                    }
+                    return [...withoutLoading, assistantResponse]
+                  })
+                } else {
+                  throw new Error('分析结果获取失败')
+                }
+              } else if (task.status === 'failed') {
+                throw new Error(task.error || '分析过程失败')
+              } else if (attempts < maxAttempts) {
+                // 继续轮询
+                setTimeout(poll, 5000) // 5秒后再次查询
+              } else {
+                throw new Error('分析超时，请重试')
+              }
+            } catch (error) {
+              console.error('状态轮询失败:', error)
+              setChatMessages(prev => {
+                const withoutLoading = prev.slice(0, -1)
+                const errorMessage: ChatMessage = {
+                  id: (Date.now() + 2).toString(),
+                  content: `分析失败: ${error instanceof Error ? error.message : '未知错误'}`,
+                  sender: "assistant",
+                  timestamp: new Date().toLocaleTimeString([], {
+                    hour: "numeric",
+                    minute: "2-digit",
+                    hour12: true,
+                  }),
+                }
+                return [...withoutLoading, errorMessage]
+              })
             }
           }
-          return updated
-        })
-
-        // 移除加载消息并添加真实回复
-        setChatMessages(prev => {
-          const withoutLoading = prev.slice(0, -1)
-          const assistantResponse: ChatMessage = {
-            id: (Date.now() + 2).toString(),
-            content: result.response,
-            sender: "assistant",
-            timestamp: new Date().toLocaleTimeString([], {
-              hour: "numeric",
-              minute: "2-digit",
-              hour12: true,
-            }),
-          }
-          return [...withoutLoading, assistantResponse]
-        })
+          
+          // 开始轮询
+          poll()
+        }
+        
+        // 启动任务状态轮询
+        pollTaskStatus(result.taskId)
+        
       } else {
-        throw new Error(result.error || '语音分析失败')
+        throw new Error(result.error || '创建分析任务失败')
       }
     } catch (error) {
       console.error('语音分析API调用失败:', error)
@@ -769,17 +819,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         
         // 注意：这里不发送音频文件，只有在录音时才发送音频
 
-        // 设置2分钟超时
-        const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 120000)
-        
-        const response = await fetch(`${API_BASE_URL}/api/post_date_debrief`, {
+        // 使用异步API端点
+        const response = await fetch(`${API_BASE_URL}/api/post-date-debrief-async`, {
           method: 'POST',
-          body: formData,
-          signal: controller.signal
+          body: formData
         })
-        
-        clearTimeout(timeoutId)
 
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`)
@@ -787,24 +831,93 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
         const result = await response.json()
         
-        if (result.success) {
-          // 移除加载消息并添加真实回复
-          setChatMessages(prev => {
-            const withoutLoading = prev.slice(0, -1) // 移除加载消息
-            const assistantResponse: ChatMessage = {
-              id: (Date.now() + 2).toString(),
-              content: result.response,
-              sender: "assistant",
-              timestamp: new Date().toLocaleTimeString([], {
-                hour: "numeric",
-                minute: "2-digit",
-                hour12: true,
-              }),
+        if (result.success && result.taskId) {
+          // 开始轮询任务状态 (复用之前的轮询逻辑)
+          const pollTaskStatus = async (taskId: string) => {
+            const maxAttempts = 60 // 最多轮询5分钟
+            let attempts = 0
+            
+            const poll = async (): Promise<void> => {
+              attempts++
+              
+              try {
+                const statusResponse = await fetch(`${API_BASE_URL}/api/task-status/${taskId}`)
+                if (!statusResponse.ok) {
+                  throw new Error(`状态查询失败: ${statusResponse.status}`)
+                }
+                
+                const statusData = await statusResponse.json()
+                const task = statusData.task
+                
+                // 更新加载消息显示进度
+                setChatMessages(prev => {
+                  const updated = [...prev]
+                  const loadingMessage = updated[updated.length - 1]
+                  if (loadingMessage && loadingMessage.sender === 'assistant') {
+                    updated[updated.length - 1] = {
+                      ...loadingMessage,
+                      content: `正在分析您的情况... ${task.progress}%`
+                    }
+                  }
+                  return updated
+                })
+                
+                if (task.status === 'completed') {
+                  // 任务完成，显示结果
+                  if (task.result && task.result.success) {
+                    setChatMessages(prev => {
+                      const withoutLoading = prev.slice(0, -1) // 移除加载消息
+                      const assistantResponse: ChatMessage = {
+                        id: (Date.now() + 2).toString(),
+                        content: task.result.response,
+                        sender: "assistant",
+                        timestamp: new Date().toLocaleTimeString([], {
+                          hour: "numeric",
+                          minute: "2-digit",
+                          hour12: true,
+                        }),
+                      }
+                      return [...withoutLoading, assistantResponse]
+                    })
+                  } else {
+                    throw new Error('分析结果获取失败')
+                  }
+                } else if (task.status === 'failed') {
+                  throw new Error(task.error || '分析过程失败')
+                } else if (attempts < maxAttempts) {
+                  // 继续轮询
+                  setTimeout(poll, 5000) // 5秒后再次查询
+                } else {
+                  throw new Error('分析超时，请重试')
+                }
+              } catch (error) {
+                console.error('状态轮询失败:', error)
+                setChatMessages(prev => {
+                  const withoutLoading = prev.slice(0, -1)
+                  const errorMessage: ChatMessage = {
+                    id: (Date.now() + 2).toString(),
+                    content: `分析失败: ${error instanceof Error ? error.message : '未知错误'}`,
+                    sender: "assistant",
+                    timestamp: new Date().toLocaleTimeString([], {
+                      hour: "numeric",
+                      minute: "2-digit",
+                      hour12: true,
+                    }),
+                  }
+                  return [...withoutLoading, errorMessage]
+                })
+              }
             }
-            return [...withoutLoading, assistantResponse]
-          })
+            
+            // 开始轮询
+            poll()
+          }
+          
+          // 启动任务状态轮询
+          pollTaskStatus(result.taskId)
+          
         } else {
-          throw new Error(result.error || '分析失败')
+          throw new Error(result.error || '创建分析任务失败')
         }
       } catch (error) {
         console.error('约会后复盘API调用失败:', error)
