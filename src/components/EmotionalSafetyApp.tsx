@@ -698,8 +698,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       formData.append('conversation_history', JSON.stringify(chatMessages))
       formData.append('audio', currentAudioBlob, fileName)
 
-      // 使用同步API端点获得更快响应
-      const response = await fetch(`${API_BASE_URL}/api/post_date_debrief`, {
+      // 音频输入通常需要深度分析，使用异步端点
+      const response = await fetch(`${API_BASE_URL}/api/post-date-debrief-async`, {
         method: 'POST',
         body: formData
       })
@@ -710,7 +710,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
       const result = await response.json()
       
-      if (result.success && result.taskId) {
+      if (result.success && result.task_id) {
         // 开始轮询任务状态
         const pollTaskStatus = async (taskId: string) => {
           const maxAttempts = 60 // 最多轮询5分钟
@@ -793,7 +793,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         }
         
         // 启动任务状态轮询
-        pollTaskStatus(result.taskId)
+        pollTaskStatus(result.task_id)
         
       } else {
         throw new Error(result.error || '创建分析任务失败')
@@ -867,8 +867,18 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         
         // 注意：这里不发送音频文件，只有在录音时才发送音频
 
-        // 使用同步API端点获得更快响应
-        const response = await fetch(`${API_BASE_URL}/api/post_date_debrief`, {
+        // 判断是否为复杂查询，使用对应的API端点
+        const isComplexQuery = currentInput.length > 20 && 
+          (currentInput.includes('打压') || currentInput.includes('炫富') || 
+           currentInput.includes('要求') || currentInput.includes('控制') || 
+           currentInput.includes('不舒服') || currentInput.includes('感觉') ||
+           currentInput.includes('行为') || currentInput.includes('说明') ||
+           currentInput.includes('分析') || currentInput.includes('怎么办'))
+        
+        const apiEndpoint = isComplexQuery ? '/api/post-date-debrief-async' : '/api/post_date_debrief'
+        console.log(`🎯 使用API端点: ${apiEndpoint} (复杂查询: ${isComplexQuery})`)
+        
+        const response = await fetch(`${API_BASE_URL}${apiEndpoint}`, {
           method: 'POST',
           body: formData
         })
@@ -880,8 +890,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         const result = await response.json()
         
         if (result.success) {
-          // 开始轮询任务状态 (复用之前的轮询逻辑)
-          const pollTaskStatus = async (taskId: string) => {
+          // 根据API端点类型处理响应
+          if (isComplexQuery && result.task_id) {
+            // 异步端点：开始轮询任务状态
+            const pollTaskStatus = async (taskId: string) => {
             const maxAttempts = 60 // 最多轮询5分钟
             let attempts = 0
             
@@ -961,8 +973,25 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             poll()
           }
           
-          // 启动任务状态轮询
-          pollTaskStatus(result.taskId)
+            // 启动任务状态轮询
+            pollTaskStatus(result.task_id)
+          } else {
+            // 同步端点：直接处理响应
+            setChatMessages(prev => {
+              const withoutLoading = prev.slice(0, -1) // 移除加载消息
+              const assistantMessage: ChatMessage = {
+                id: (Date.now() + 2).toString(),
+                content: result.response || '分析完成',
+                sender: "assistant",
+                timestamp: new Date().toLocaleTimeString([], {
+                  hour: "numeric",
+                  minute: "2-digit", 
+                  hour12: true,
+                }),
+              }
+              return [...withoutLoading, assistantMessage]
+            })
+          }
           
         } else {
           throw new Error(result.error || '创建分析任务失败')
