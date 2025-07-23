@@ -558,18 +558,54 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   // 开始录音
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const recorder = new MediaRecorder(stream)
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          sampleRate: 16000,
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true
+        }
+      })
+      
+      // 检查浏览器支持的MIME类型
+      let mimeType = 'audio/webm'
+      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        mimeType = 'audio/webm;codecs=opus'
+      } else if (MediaRecorder.isTypeSupported('audio/wav')) {
+        mimeType = 'audio/wav'
+      } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+        mimeType = 'audio/mp4'
+      }
+      
+      console.log('🎤 使用录音格式:', mimeType)
+      
+      const recorder = new MediaRecorder(stream, { mimeType })
       const chunks: BlobPart[] = []
 
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           chunks.push(event.data)
+          console.log('📊 录音数据块:', event.data.size, 'bytes')
         }
       }
 
       recorder.onstop = () => {
-        const audioBlob = new Blob(chunks, { type: 'audio/wav' })
+        console.log('🔚 录音结束，总数据块:', chunks.length)
+        if (chunks.length === 0) {
+          console.error('❌ 录音失败：没有录制到数据')
+          alert('录音失败，请重试')
+          return
+        }
+        
+        const audioBlob = new Blob(chunks, { type: mimeType })
+        console.log('🎵 音频Blob创建完成:', audioBlob.size, 'bytes, 类型:', audioBlob.type)
+        
+        if (audioBlob.size === 0) {
+          console.error('❌ 录音失败：生成的音频文件为空')
+          alert('录音失败，生成的音频文件为空，请重试')
+          return
+        }
+        
         setAudioBlob(audioBlob)
         stream.getTracks().forEach(track => track.stop())
       }
@@ -643,15 +679,27 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     const currentAudioBlob = audioBlob
     setAudioBlob(null)
 
+    // 根据音频类型确定文件扩展名
+    let fileName = 'recording.webm'
+    if (currentAudioBlob.type.includes('wav')) {
+      fileName = 'recording.wav'
+    } else if (currentAudioBlob.type.includes('mp4')) {
+      fileName = 'recording.mp4'
+    } else if (currentAudioBlob.type.includes('webm')) {
+      fileName = 'recording.webm'
+    }
+    
+    console.log('🎵 发送音频文件:', fileName, '大小:', currentAudioBlob.size, 'bytes')
+
     // 调用约会后复盘API（带音频）
     try {
       const formData = new FormData()
       formData.append('user_input', '语音消息')
       formData.append('conversation_history', JSON.stringify(chatMessages))
-      formData.append('audio', currentAudioBlob, 'recording.wav')
+      formData.append('audio', currentAudioBlob, fileName)
 
-      // 使用异步API端点
-      const response = await fetch(`${API_BASE_URL}/api/post-date-debrief-async`, {
+      // 使用同步API端点获得更快响应
+      const response = await fetch(`${API_BASE_URL}/api/post_date_debrief`, {
         method: 'POST',
         body: formData
       })
@@ -819,8 +867,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         
         // 注意：这里不发送音频文件，只有在录音时才发送音频
 
-        // 使用异步API端点
-        const response = await fetch(`${API_BASE_URL}/api/post-date-debrief-async`, {
+        // 使用同步API端点获得更快响应
+        const response = await fetch(`${API_BASE_URL}/api/post_date_debrief`, {
           method: 'POST',
           body: formData
         })
@@ -831,7 +879,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
         const result = await response.json()
         
-        if (result.success && result.taskId) {
+        if (result.success) {
           // 开始轮询任务状态 (复用之前的轮询逻辑)
           const pollTaskStatus = async (taskId: string) => {
             const maxAttempts = 60 // 最多轮询5分钟
