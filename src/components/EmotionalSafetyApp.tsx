@@ -868,12 +868,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         // 注意：这里不发送音频文件，只有在录音时才发送音频
 
         // 判断是否为复杂查询，使用对应的API端点
-        const isComplexQuery = currentInput.length > 20 && 
-          (currentInput.includes('打压') || currentInput.includes('炫富') || 
+        const hasComplexKeywords = currentInput.includes('打压') || currentInput.includes('炫富') || 
            currentInput.includes('要求') || currentInput.includes('控制') || 
            currentInput.includes('不舒服') || currentInput.includes('感觉') ||
            currentInput.includes('行为') || currentInput.includes('说明') ||
-           currentInput.includes('分析') || currentInput.includes('怎么办'))
+           currentInput.includes('分析') || currentInput.includes('怎么办') ||
+           currentInput.includes('pua') || currentInput.includes('PUA') ||
+           currentInput.includes('红旗') || currentInput.includes('问题') ||
+           currentInput.includes('评估') || currentInput.includes('建议')
+        
+        const isComplexQuery = currentInput.length > 10 && hasComplexKeywords
         
         const apiEndpoint = isComplexQuery ? '/api/post-date-debrief-async' : '/api/post_date_debrief'
         console.log(`🎯 使用API端点: ${apiEndpoint} (复杂查询: ${isComplexQuery})`)
