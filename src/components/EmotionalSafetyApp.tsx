@@ -879,8 +879,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         
         const isComplexQuery = currentInput.length > 10 && hasComplexKeywords
         
-        const apiEndpoint = isComplexQuery ? '/api/post-date-debrief-async' : '/api/post_date_debrief'
-        console.log(`🎯 使用API端点: ${apiEndpoint} (复杂查询: ${isComplexQuery})`)
+        // 临时修复：强制所有查询使用异步端点进行调试
+        const apiEndpoint = '/api/post-date-debrief-async'  // 临时强制使用异步端点
+        console.log(`🎯 临时强制使用异步端点: ${apiEndpoint} (原本复杂查询判断: ${isComplexQuery})`)
         
         const response = await fetch(`${API_BASE_URL}${apiEndpoint}`, {
           method: 'POST',
