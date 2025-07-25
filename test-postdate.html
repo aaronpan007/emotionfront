@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PostDate功能测试</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-area { border: 1px solid #ccc; padding: 20px; margin: 10px 0; }
+        .log { background: #f5f5f5; padding: 10px; margin: 10px 0; white-space: pre-wrap; }
+        button { padding: 10px 20px; margin: 5px; }
+        input, textarea { width: 300px; padding: 5px; margin: 5px; }
+    </style>
+</head>
+<body>
+    <h1>PostDate深度回复功能测试</h1>
+    
+    <div class="test-area">
+        <h3>测试输入</h3>
+        <textarea id="userInput" rows="3" placeholder="输入测试文本">约会过程一直打压我，不尊重人，要求我的穿搭还有提供情绪价值</textarea><br>
+        <button onclick="testPostDate()">测试PostDate异步功能</button>
+        <button onclick="clearLog()">清空日志</button>
+    </div>
+    
+    <div class="test-area">
+        <h3>测试日志</h3>
+        <div id="log" class="log"></div>
+    </div>
+    
+    <script>
+        const API_BASE_URL = 'https://ai-emotional-safety-backend.onrender.com';
+        
+        function log(message) {
+            const logElement = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logElement.textContent += `[${timestamp}] ${message}\n`;
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+        
+        function clearLog() {
+            document.getElementById('log').textContent = '';
+        }
+        
+        async function testPostDate() {
+            const userInput = document.getElementById('userInput').value;
+            
+            try {
+                log('🚀 开始测试PostDate功能...');
+                log(`📝 输入内容: ${userInput}`);
+                
+                // 构建FormData
+                const formData = new FormData();
+                formData.append('user_input', userInput);
+                formData.append('conversation_history', '[]');
+                
+                log('📤 发送请求到异步端点...');
+                
+                // 发送请求
+                const response = await fetch(`${API_BASE_URL}/api/post-date-debrief-async`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                log(`📡 响应状态: ${response.status} ${response.statusText}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const result = await response.json();
+                log(`✅ 获得响应: ${JSON.stringify(result, null, 2)}`);
+                
+                if (result.success && result.task_id) {
+                    log(`🔄 开始轮询任务状态: ${result.task_id}`);
+                    await pollTaskStatus(result.task_id);
+                } else {
+                    log('❌ 响应格式错误');
+                }
+                
+            } catch (error) {
+                log(`❌ 测试失败: ${error.message}`);
+                log(`🔍 错误详情: ${JSON.stringify(error, Object.getOwnPropertyNames(error))}`);
+            }
+        }
+        
+        async function pollTaskStatus(taskId) {
+            const maxAttempts = 60;
+            let attempts = 0;
+            
+            const poll = async () => {
+                attempts++;
+                log(`🔍 查询状态 (第${attempts}次)...`);
+                
+                try {
+                    const statusResponse = await fetch(`${API_BASE_URL}/api/task-status/${taskId}`);
+                    
+                    if (!statusResponse.ok) {
+                        throw new Error(`状态查询失败: ${statusResponse.status}`);
+                    }
+                    
+                    const statusData = await statusResponse.json();
+                    const task = statusData.task;
+                    
+                    log(`📊 任务状态: ${task.status}, 进度: ${task.progress}%`);
+                    
+                    if (task.status === 'completed') {
+                        log('🎉 任务完成!');
+                        if (task.result && task.result.success) {
+                            log(`📝 分析结果长度: ${task.result.response?.length || 0} 字符`);
+                            log(`💡 分析结果预览: ${task.result.response?.substring(0, 200)}...`);
+                            log(`📊 元数据: ${JSON.stringify(task.result.metadata, null, 2)}`);
+                        } else {
+                            log('❌ 任务结果获取失败');
+                        }
+                        return;
+                    } else if (task.status === 'failed') {
+                        log(`❌ 任务失败: ${task.error || '未知错误'}`);
+                        return;
+                    } else if (attempts < maxAttempts) {
+                        setTimeout(poll, 5000);
+                    } else {
+                        log('⏰ 轮询超时');
+                    }
+                    
+                } catch (error) {
+                    log(`❌ 状态查询错误: ${error.message}`);
+                    if (attempts < maxAttempts) {
+                        setTimeout(poll, 5000);
+                    }
+                }
+            };
+            
+            poll();
+        }
+        
+        // 页面加载时测试连接
+        window.onload = async function() {
+            try {
+                log('🔍 测试API连接...');
+                const response = await fetch(`${API_BASE_URL}/api/health`);
+                const health = await response.json();
+                log(`✅ API连接正常: ${health.status}`);
+                log(`📊 服务器信息: ${JSON.stringify(health, null, 2)}`);
+            } catch (error) {
+                log(`❌ API连接失败: ${error.message}`);
+            }
+        };
+    </script>
+</body>
+</html>

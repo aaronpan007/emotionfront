@@ -860,6 +860,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
     // 调用约会后复盘API
     const callPostDateDebriefAPI = async () => {
+      let timeoutId: NodeJS.Timeout | null = null
       try {
         const formData = new FormData()
         formData.append('user_input', currentInput)
@@ -883,12 +884,35 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         const apiEndpoint = isComplexQuery ? '/api/post-date-debrief-async' : '/api/post_date_debrief'
         console.log(`🎯 智能端点选择: ${apiEndpoint} (复杂查询: ${isComplexQuery}, 输入长度: ${currentInput.length})`)
         
+        console.log(`📡 发送请求到: ${API_BASE_URL}${apiEndpoint}`)
+        console.log(`📝 请求数据:`, {
+          user_input: currentInput.substring(0, 50) + '...',
+          conversation_history_length: chatMessages.length,
+          formData_keys: Array.from(formData.keys())
+        })
+        
+        // 创建超时控制
+        const controller = new AbortController()
+        timeoutId = setTimeout(() => {
+          controller.abort()
+          console.warn('🕐 请求超时，已取消')
+        }, 120000) // 2分钟超时
+        
         const response = await fetch(`${API_BASE_URL}${apiEndpoint}`, {
           method: 'POST',
-          body: formData
+          body: formData,
+          signal: controller.signal
         })
+        
+        if (timeoutId) clearTimeout(timeoutId) // 请求成功，清除超时
+
+        console.log(`📊 响应状态: ${response.status} ${response.statusText}`)
+        console.log(`📋 响应头:`, Object.fromEntries(response.headers.entries()))
 
         if (!response.ok) {
+          const errorText = await response.text().catch(() => '无法读取错误信息')
+          console.error(`❌ HTTP错误: ${response.status} ${response.statusText}`)
+          console.error(`📄 错误内容:`, errorText)
           throw new Error(`HTTP ${response.status}: ${response.statusText}`)
         }
 
@@ -1002,14 +1026,34 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           throw new Error(result.error || '创建分析任务失败')
         }
       } catch (error) {
-        console.error('约会后复盘API调用失败:', error)
+        if (timeoutId) clearTimeout(timeoutId) // 确保清理超时
+        
+        console.error('💥 约会后复盘API调用失败:', error)
+        console.error('🔍 错误详情:', {
+          name: error.name,
+          message: error.message,
+          stack: error.stack,
+          cause: error.cause
+        })
+        
+        // 判断错误类型
+        let errorMessage = ''
+        if (error.name === 'AbortError') {
+          errorMessage = '请求超时，请检查网络连接后重试'
+        } else if (error.message.includes('Failed to fetch')) {
+          errorMessage = '网络连接失败，请检查网络设置后重试'
+        } else if (error.message.includes('HTTP')) {
+          errorMessage = `服务器响应错误：${error.message}`
+        } else {
+          errorMessage = `请求失败：${error.message}`
+        }
         
         // 移除加载消息并添加错误回复
         setChatMessages(prev => {
           const withoutLoading = prev.slice(0, -1) // 移除加载消息
           const errorResponse: ChatMessage = {
             id: (Date.now() + 2).toString(),
-            content: `很抱歉，我暂时无法为您提供专业建议。错误信息：${error.message}。请稍后再试，或者尝试重新描述您的问题。`,
+            content: `很抱歉，我暂时无法为您提供专业建议。错误信息：${errorMessage}。请稍后再试，或者尝试重新描述您的问题。`,
             sender: "assistant",
             timestamp: new Date().toLocaleTimeString([], {
               hour: "numeric",
